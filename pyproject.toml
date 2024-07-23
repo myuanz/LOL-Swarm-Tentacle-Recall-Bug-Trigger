@@ -5,7 +5,10 @@ description = "Default template for PDM package"
 authors = [
     {name = "myuanz", email = "provefars@gmail.com"},
 ]
-dependencies = []
+dependencies = [
+    "opencv-python-headless>=4.10.0.84",
+    "numpy>=2.0.1",
+]
 requires-python = "==3.12.*"
 readme = "README.md"
 license = {text = "MIT"}
@@ -13,3 +16,8 @@ license = {text = "MIT"}
 
 [tool.pdm]
 distribution = false
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "ipykernel>=6.29.5",
+]
