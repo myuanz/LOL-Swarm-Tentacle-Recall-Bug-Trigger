@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
-
+import cv2
 
 # 定义数据集类
 class ImageDataset(Dataset):
@@ -34,7 +34,7 @@ class ImageDataset(Dataset):
         # 一次性加载所有图像到内存
         for img_name, label in self.labels.items():
             img_path = os.path.join(image_folder, img_name)
-            image = Image.open(img_path).convert('RGB')
+            image = cv2.imread(img_path)
             self.images.append(image)
             self.label_indices.append(self.label_to_idx[label])
 
@@ -55,20 +55,22 @@ class ImageDataset(Dataset):
 
 # 定义数据增强和归一化
 train_transform = transforms.Compose([
+    transforms.ToTensor(),
+
     transforms.RandomResizedCrop(224),
     transforms.RandomHorizontalFlip(),
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
     transforms.RandomRotation(10),
     transforms.RandomAffine(0, translate=(0.1, 0.1)),
     transforms.RandomErasing(p=0.2),
-    transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 test_transform = transforms.Compose([
+    transforms.ToTensor(),
+
     transforms.Resize(256),
     transforms.CenterCrop(224),
-    transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
