@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
 from pathlib import Path
+import pplcnet
 
 # 定义数据集类
 class ImageDataset(Dataset):
@@ -63,7 +64,7 @@ train_transform = transforms.Compose([
     transforms.ToTensor(),
 
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-    transforms.RandomRotation(10),
+    # transforms.RandomRotation(10),
     transforms.RandomErasing(p=0.2),
 ])
 
@@ -90,15 +91,20 @@ train_loader = DataLoader(train_dataset, batch_size=256, sampler=sampler)
 test_loader = DataLoader(test_dataset, batch_size=256)
 
 # 定义模型
-model = models.resnet18(weights="IMAGENET1K_V1")
-num_ftrs = model.fc.in_features
-model.fc = nn.Linear(num_ftrs, 4)  # 4 classes
+# model = models.resnet18(weights="IMAGENET1K_V1")
+# num_ftrs = model.fc.in_features
+# model.fc = nn.Linear(num_ftrs, 4)  # 4 classes
+model = pplcnet.PPLCNet_x0_5(num_classes=4)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
-if os.path.exists('image_classifier.pth'):
-    model.load_state_dict(torch.load('image_classifier.pth'))
+model_name = model.__class__.__name__
+if hasattr(model, 'scale'):
+    model_name += f'_{getattr(model, "scale")}'
+model_p = f'model_{model_name}.pth'
+if os.path.exists(model_p):
+    model.load_state_dict(torch.load(model_p))
 
 # 定义损失函数和优化器
 criterion_weight = torch.Tensor([
@@ -121,7 +127,7 @@ criterion = nn.CrossEntropyLoss(weight=criterion_weight)
 
 # criterion = FocalLoss()
 
-optimizer = optim.SGD(model.parameters(), lr=0.0005)
+optimizer = optim.SGD(model.parameters(), lr=0.001)
 
 log_dir = Path(f'runs/{datetime.now():%Y%m%d-%H%M}')
 writer = SummaryWriter(log_dir=log_dir)
@@ -193,7 +199,7 @@ for epoch in range(num_epochs):
     test_loss, accuracy = test(model, test_loader, criterion, epoch)
     print(f'Epoch {epoch+1}/{num_epochs}, Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
-    torch.save(model.state_dict(), 'image_classifier.pth')
+    torch.save(model.state_dict(), model_p)
 writer.close()
 
 # 保存模型
