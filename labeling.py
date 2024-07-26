@@ -34,6 +34,9 @@ class ImageLabelingApp(QMainWindow):
             button.clicked.connect(lambda checked, lt=label_type: self.label_image(lt))
             button_layout.addWidget(button)
             self.buttons.append(button)
+        next_action_button = QPushButton("Next Action")
+        next_action_button.clicked.connect(self.to_next_action)
+        main_layout.addWidget(next_action_button)
 
         main_layout.addLayout(button_layout)
 
@@ -79,6 +82,13 @@ class ImageLabelingApp(QMainWindow):
         self.labels[current_image] = label_type
         self.save_labels()
         self.show_next()
+
+    def to_next_action(self):
+        while self.current_index < len(self.image_files) - 1:
+            self.current_index += 1
+            if self.labels[self.image_files[self.current_index]] == "动作人物":
+                self.show_image()
+                break
 
     def show_next(self):
         if self.current_index < len(self.image_files) - 1:
