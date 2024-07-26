@@ -1,7 +1,47 @@
 import json
 import os
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Callable, Literal
+
+import tyro
+from beartype import beartype
+from serde import serde
+import serde.json as sjson
+
+@serde
+@dataclass
+class TrainConfig:
+    model: Literal[
+        'PPLCNet_x0_25', 'PPLCNet_x0_35', 'PPLCNet_x0_5', 'PPLCNet_x0_75', 
+        'PPLCNet_x1_0', 'PPLCNet_x1_5', 'PPLCNet_x2_0', 'PPLCNet_x2_5',
+        'resnet18'
+    ] = 'PPLCNet_x1_5'
+
+    optimizer: Literal['SGD', 'Adam', 'AdamW'] = 'Adam'
+    lr: float = 0.0005
+    batch_size: int = 256
+    num_epochs: int = 200
+
+    load_model: Path | None = None
+    log_dir: Path = Path(f'runs/{datetime.now():%Y%m%d-%H%M%S}')
+    last_epoch: int = 0
+    random_seed: int = 42
+    
+    def save(self):
+        self.log_dir.joinpath('config.json').write_text(sjson.to_json(self))
+
+
+args = tyro.cli(TrainConfig)
+if args.log_dir.exists():
+    raise FileExistsError(f'{args.log_dir} already exists')
+if args.load_model and not args.load_model.exists():
+    raise FileNotFoundError(f'{args.load_model} does not exist')
+
+args.log_dir.mkdir(parents=True, exist_ok=True)
+args.save()
 
 import cv2
 import matplotlib.pyplot as plt
@@ -17,32 +57,60 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
-from pathlib import Path
+
 import pplcnet
+
 
 # 定义数据集类
 class ImageDataset(Dataset):
     label_types = ["普通人物", "动作人物", "选择卡片", "其他"]
     
-    def __init__(self, image_folder: str, labels: dict[str, str], transform=None, included_img_names: set[str]=set()):
+    def __init__(
+        self, image_folder: list[Path] | Path, transform: Callable|None=None, included_img_names: set[str]=set(), *, 
+        split_images: list[np.ndarray]=[], split_labels: list[int]=[], split_image_names: list[str]=[]
+    ):
         self.transform = transform
         self.label_to_idx = {label: idx for idx, label in enumerate(self.label_types)}
+        self.included_img_names = included_img_names
 
-        self.labels = labels
+        self.images: list[np.ndarray] = []
+        self.label_indices: list[int] = []
+        self.image_names: list[str] = []
+        self.all_labels: dict[str, str] = {}
 
-        # 初始化图像和标签列表
-        self.images = []
-        self.label_indices = []
+        if isinstance(image_folder, Path):
+            self.image_folder = [image_folder]
+        else:
+            self.image_folder = image_folder
 
-        # 一次性加载所有图像到内存
-        for img_name, label in self.labels.items():
-            if included_img_names and img_name not in included_img_names:
+        if split_images and split_labels and split_image_names:
+            self.images = split_images
+            self.label_indices = split_labels
+            self.image_names = split_image_names
+        else:
+            for folder in self.image_folder:
+                self.load_folder(folder)
+
+        self.all_labels = {img_name: self.label_types[label] for img_name, label in zip(self.image_names, self.label_indices)}
+
+    def load_folder(self, image_folder: Path):
+        curr_labels = json.load(open(image_folder / 'labels.json', 'r'))
+        
+        for img_name, label in curr_labels.items():
+            full_name = f'{image_folder.name}/{img_name}'
+            if self.included_img_names and full_name not in self.included_img_names:
                 continue
-
-            img_path = os.path.join(image_folder, img_name)
-            image = cv2.imread(img_path)
+            img_path = image_folder / img_name
+            image = cv2.imread(str(img_path))
             self.images.append(image)
             self.label_indices.append(self.label_to_idx[label])
+            self.image_names.append(full_name)
+
+    def split(self, test_size=0.2, train_transform: Callable|None=None, test_transform: Callable|None=None):
+        train_img_names, test_img_names = train_test_split(self.image_names, test_size=test_size, random_state=args.random_seed)
+        train_dataset = ImageDataset(self.image_folder, transform=train_transform, included_img_names=set(train_img_names))
+        test_dataset = ImageDataset(self.image_folder, transform=test_transform, included_img_names=set(test_img_names))
+        return train_dataset, test_dataset
 
     def __len__(self):
         return len(self.images)
@@ -72,39 +140,37 @@ test_transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-all_labels: dict[str, str] = json.load(open('./labels.json', 'r'))
-train_img_names, test_img_names = train_test_split(list(all_labels.keys()), test_size=0.2)
 
+total_dataset = ImageDataset(
+    [Path("./data/frames"), Path('./data/2024-07-25-21-36-48/')], 
+)
+train_dataset, test_dataset = total_dataset.split(test_size=0.2, train_transform=train_transform, test_transform=test_transform)
+
+all_labels = total_dataset.all_labels
 
 class_counts = Counter(all_labels.values())
 num_samples = len(all_labels)
 class_weights = {cls: num_samples / count for cls, count in class_counts.items()}
-sample_weights = [class_weights[all_labels[n]] for n in train_img_names]
+sample_weights = [class_weights[all_labels[n]] for n in train_dataset.image_names]
 
 sampler = WeightedRandomSampler(sample_weights, num_samples, replacement=True)
-
-train_dataset = ImageDataset("./data/frames", all_labels, transform=train_transform, included_img_names=set(train_img_names))
-test_dataset = ImageDataset("./data/frames", all_labels, transform=test_transform, included_img_names=set(test_img_names))
-
 
 train_loader = DataLoader(train_dataset, batch_size=256, sampler=sampler)
 test_loader = DataLoader(test_dataset, batch_size=256)
 
 # 定义模型
-# model = models.resnet18(weights="IMAGENET1K_V1")
-# num_ftrs = model.fc.in_features
-# model.fc = nn.Linear(num_ftrs, 4)  # 4 classes
-model = pplcnet.PPLCNet_x0_5(num_classes=4)
+if args.model == 'resnet18':
+    model = models.resnet18(pretrained=True)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, 4)  # 4 classes
+else:
+    model = getattr(pplcnet, args.model)(num_classes=4)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
-model_name = model.__class__.__name__
-if hasattr(model, 'scale'):
-    model_name += f'_{getattr(model, "scale")}'
-model_p = f'model_{model_name}.pth'
-if os.path.exists(model_p):
-    model.load_state_dict(torch.load(model_p))
+if args.load_model:
+    model.load_state_dict(torch.load(args.load_model))
 
 # 定义损失函数和优化器
 criterion_weight = torch.Tensor([
@@ -112,25 +178,11 @@ criterion_weight = torch.Tensor([
     for cls in ImageDataset.label_types
 ]).to(device)
 print(f'{criterion_weight=} {class_weights=}')
+
 criterion = nn.CrossEntropyLoss(weight=criterion_weight)
-# class FocalLoss(nn.Module):
-#     def __init__(self, alpha=1, gamma=2):
-#         super(FocalLoss, self).__init__()
-#         self.alpha = alpha
-#         self.gamma = gamma
-    
-#     def forward(self, inputs, targets):
-#         ce_loss = F.cross_entropy(inputs, targets, reduction='none')
-#         pt = torch.exp(-ce_loss)
-#         focal_loss = self.alpha * (1-pt)**self.gamma * ce_loss
-#         return focal_loss.mean()
+optimizer = getattr(optim, args.optimizer)(model.parameters(), lr=args.lr)
 
-# criterion = FocalLoss()
-
-optimizer = optim.SGD(model.parameters(), lr=0.001)
-
-log_dir = Path(f'runs/{datetime.now():%Y%m%d-%H%M}')
-writer = SummaryWriter(log_dir=log_dir)
+writer = SummaryWriter(log_dir=args.log_dir)
 
 # 训练函数
 def train(model, loader, criterion, optimizer, epoch):
@@ -193,13 +245,15 @@ def test(model, loader, criterion, epoch):
     return test_loss, accuracy
 
 # 训练循环
-num_epochs = 200
+num_epochs = args.num_epochs
 for epoch in range(num_epochs):
     train(model, train_loader, criterion, optimizer, epoch)
     test_loss, accuracy = test(model, test_loader, criterion, epoch)
     print(f'Epoch {epoch+1}/{num_epochs}, Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
-    torch.save(model.state_dict(), model_p)
+    torch.save(model.state_dict(), args.log_dir / f"{args.model}.pth")
+    args.last_epoch = epoch
 writer.close()
+args.save()
 
 # 保存模型
