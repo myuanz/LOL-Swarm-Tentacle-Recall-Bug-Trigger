@@ -2,10 +2,8 @@ import time
 import mss
 import cv2
 import numpy as np
-import torch
-import pplcnet
-from torchvision import transforms
 from datetime import datetime
+import onnxruntime
 
 left = 850
 top = 400
@@ -23,17 +21,12 @@ dst_top  = int(top * scale)
 new_width = int(width * scale)
 
 
-model = pplcnet.PPLCNet_x1_0(num_classes=4)
-model.load_state_dict(torch.load('PPLCNet1.0.pth', map_location='cpu'))
-model.eval()
+ort_session = onnxruntime.InferenceSession('./runs/PPLCNet_x1_5.onnx')  
 
-eval_transform = transforms.Compose([
-    transforms.ToTensor(),
-])
-
+start_time = time.time()
+frame_count = 0
 
 with mss.mss() as sct:
-    i = 0
     while True:
         img = sct.grab({
             'left': dst_left, 'top': dst_top, 
@@ -41,10 +34,14 @@ with mss.mss() as sct:
         })
         img = np.array(img)
         img = cv2.resize(img, (width, width))[..., :3]
-        img_ts = eval_transform(img).unsqueeze(0)
-        pred = model(img_ts)
-        pred_label = pred.argmax(dim=1).item()
-        print(datetime.now(), pred_label, pred)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        img_in = (img.transpose((2, 0, 1)) / 255.0).astype(np.float32).reshape(1, 3, 224, 224)
+
+        pred = ort_session.run(None, {'input': img_in})[0][0]
+
+        pred_label = pred.argmax()
+        print(datetime.now(), f'{frame_count / (time.time() - start_time):.2f} FPS', pred_label, pred)
+        
         # cv2.imwrite(f'data/snapshot07252130/{i:07d}.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-        time.sleep(0.05)
-        i += 1
+        # time.sleep(0.05)
+        frame_count += 1
