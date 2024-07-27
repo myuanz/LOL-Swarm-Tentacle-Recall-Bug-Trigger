@@ -29,6 +29,7 @@ class TrainConfig:
     log_dir: Path = Path(f'runs/{datetime.now():%Y%m%d-%H%M%S}')
     last_epoch: int = 0
     random_seed: int = 42
+    test_size: float = 0.2
     
     def save(self):
         self.log_dir.joinpath('config.json').write_text(sjson.to_json(self))
@@ -61,7 +62,7 @@ from torchvision import models, transforms
 import pplcnet
 
 
-# 定义数据集类
+@beartype
 class ImageDataset(Dataset):
     label_types = ["普通人物", "动作人物", "选择卡片", "其他"]
     
@@ -107,9 +108,23 @@ class ImageDataset(Dataset):
             self.image_names.append(full_name)
 
     def split(self, test_size=0.2, train_transform: Callable|None=None, test_transform: Callable|None=None):
-        train_img_names, test_img_names = train_test_split(self.image_names, test_size=test_size, random_state=args.random_seed)
-        train_dataset = ImageDataset(self.image_folder, transform=train_transform, included_img_names=set(train_img_names))
-        test_dataset = ImageDataset(self.image_folder, transform=test_transform, included_img_names=set(test_img_names))
+        train_idxs, test_idxs = train_test_split(
+            range(len(self.images)),
+            test_size=test_size, random_state=args.random_seed
+        )
+
+        train_dataset = ImageDataset(
+            self.image_folder, transform=train_transform, 
+            split_images=[self.images[i] for i in train_idxs],
+            split_labels=[self.label_indices[i] for i in train_idxs],
+            split_image_names=[self.image_names[i] for i in train_idxs],
+        )
+        test_dataset = ImageDataset(
+            self.image_folder, transform=test_transform, 
+            split_images=[self.images[i] for i in test_idxs],
+            split_labels=[self.label_indices[i] for i in test_idxs],
+            split_image_names=[self.image_names[i] for i in test_idxs],
+        )
         return train_dataset, test_dataset
 
     def __len__(self):
@@ -144,7 +159,7 @@ test_transform = transforms.Compose([
 total_dataset = ImageDataset(
     [Path("./data/frames"), Path('./data/2024-07-25-21-36-48/')], 
 )
-train_dataset, test_dataset = total_dataset.split(test_size=0.2, train_transform=train_transform, test_transform=test_transform)
+train_dataset, test_dataset = total_dataset.split(test_size=args.test_size, train_transform=train_transform, test_transform=test_transform)
 
 all_labels = total_dataset.all_labels
 
@@ -205,13 +220,13 @@ def train(model, loader, criterion, optimizer, epoch):
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
-        writer.add_scalar('training loss', running_loss, epoch * len(loader) + i)
+        writer.add_scalar('loss/training loss', running_loss, epoch * len(loader) + i)
         running_loss = 0.0
     # print(all_labels, all_preds)
     cm = confusion_matrix(all_labels, all_preds)
     fig, ax = plt.subplots(figsize=(10, 10))
     sns.heatmap(cm, annot=True, fmt='d', ax=ax)
-    writer.add_figure('training confusion matrix', fig, epoch)
+    writer.add_figure('cfmtx/training confusion matrix', fig, epoch)
 
 # 测试函数
 def test(model, loader, criterion, epoch):
@@ -234,13 +249,13 @@ def test(model, loader, criterion, epoch):
     test_loss /= len(loader.dataset)
     accuracy = 100. * correct / len(loader.dataset)
 
-    writer.add_scalar('test loss', test_loss, epoch)
+    writer.add_scalar('loss/test loss', test_loss, epoch)
     writer.add_scalar('test accuracy', accuracy, epoch)
 
     cm = confusion_matrix(all_labels, all_preds)
     fig, ax = plt.subplots(figsize=(10, 10))
     sns.heatmap(cm, annot=True, fmt='d', ax=ax)
-    writer.add_figure('test confusion matrix', fig, epoch)
+    writer.add_figure('cfmtx/test confusion matrix', fig, epoch)
 
     return test_loss, accuracy
 
