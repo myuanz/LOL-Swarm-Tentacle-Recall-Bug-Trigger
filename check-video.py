@@ -142,8 +142,8 @@ def main(video_path: Path, /, dst: Path|None = None, export_to: Literal['video',
 
         img = img[top:top+width, left:left+width]
         img_ts = eval_transform(img).unsqueeze(0)
-        pred = model(img_ts)
-        exportor.add_record(img, pred, preview=True)
+        pred = model(img_ts).detach().numpy()
+        exportor.add_record(img, pred, preview=False)
 
     exportor.release()
 
