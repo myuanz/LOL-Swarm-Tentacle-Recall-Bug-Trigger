@@ -26,7 +26,9 @@ eval_transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-dataset = ImageDataset(Path("./data/frames"), transform=eval_transform)
+dataset = ImageDataset([
+    Path("./data/frames"), Path("./data/2024-07-25-21-36-48/")
+], transform=eval_transform)
 train_dataset, test_dataset = dataset.split(test_size=0.2, train_transform=eval_transform, test_transform=eval_transform)
 # %%
 len(train_dataset), len(test_dataset), len(dataset)
