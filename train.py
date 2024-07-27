@@ -1,7 +1,48 @@
 import json
 import os
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Callable, Literal
+
+import tyro
+from beartype import beartype
+from serde import serde
+import serde.json as sjson
+
+@serde
+@dataclass
+class TrainConfig:
+    model: Literal[
+        'PPLCNet_x0_25', 'PPLCNet_x0_35', 'PPLCNet_x0_5', 'PPLCNet_x0_75', 
+        'PPLCNet_x1_0', 'PPLCNet_x1_5', 'PPLCNet_x2_0', 'PPLCNet_x2_5',
+        'resnet18'
+    ] = 'PPLCNet_x1_5'
+
+    optimizer: Literal['SGD', 'Adam', 'AdamW'] = 'Adam'
+    lr: float = 0.0005
+    batch_size: int = 256
+    num_epochs: int = 200
+
+    load_model: Path | None = None
+    log_dir: Path = Path(f'runs/{datetime.now():%Y%m%d-%H%M%S}')
+    last_epoch: int = 0
+    random_seed: int = 42
+    test_size: float = 0.2
+    
+    def save(self):
+        self.log_dir.joinpath('config.json').write_text(sjson.to_json(self))
+
+
+args = tyro.cli(TrainConfig)
+if args.log_dir.exists():
+    raise FileExistsError(f'{args.log_dir} already exists')
+if args.load_model and not args.load_model.exists():
+    raise FileNotFoundError(f'{args.load_model} does not exist')
+
+args.log_dir.mkdir(parents=True, exist_ok=True)
+args.save()
 
 import cv2
 import matplotlib.pyplot as plt
@@ -17,47 +58,8 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
-from pathlib import Path
+from dataset import ImageDataset
 import pplcnet
-
-# 定义数据集类
-class ImageDataset(Dataset):
-    label_types = ["普通人物", "动作人物", "选择卡片", "其他"]
-    
-    def __init__(self, image_folder: str, labels: dict[str, str], transform=None, included_img_names: set[str]=set()):
-        self.transform = transform
-        self.label_to_idx = {label: idx for idx, label in enumerate(self.label_types)}
-
-        self.labels = labels
-
-        # 初始化图像和标签列表
-        self.images = []
-        self.label_indices = []
-
-        # 一次性加载所有图像到内存
-        for img_name, label in self.labels.items():
-            if included_img_names and img_name not in included_img_names:
-                continue
-
-            img_path = os.path.join(image_folder, img_name)
-            image = cv2.imread(img_path)
-            self.images.append(image)
-            self.label_indices.append(self.label_to_idx[label])
-
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        image = self.images[idx]
-        label = self.label_indices[idx]
-
-        if self.transform:
-            image = self.transform(image)
-        else:
-            # 如果没有提供 transform，至少将图像转换为 tensor
-            image = torch.from_numpy(np.array(image).transpose((2, 0, 1))).float() / 255.0
-
-        return image, label
 
 # 定义数据增强和归一化
 train_transform = transforms.Compose([
@@ -72,65 +74,40 @@ test_transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-all_labels: dict[str, str] = json.load(open('./labels.json', 'r'))
-train_img_names, test_img_names = train_test_split(list(all_labels.keys()), test_size=0.2)
+
+total_dataset = ImageDataset(
+    [Path("./data/frames"), Path('./data/2024-07-25-21-36-48/')], 
+)
+train_dataset, test_dataset = total_dataset.split(test_size=args.test_size, train_transform=train_transform, test_transform=test_transform)
 
 
-class_counts = Counter(all_labels.values())
-num_samples = len(all_labels)
-class_weights = {cls: num_samples / count for cls, count in class_counts.items()}
-sample_weights = [class_weights[all_labels[n]] for n in train_img_names]
-
-sampler = WeightedRandomSampler(sample_weights, num_samples, replacement=True)
-
-train_dataset = ImageDataset("./data/frames", all_labels, transform=train_transform, included_img_names=set(train_img_names))
-test_dataset = ImageDataset("./data/frames", all_labels, transform=test_transform, included_img_names=set(test_img_names))
-
-
-train_loader = DataLoader(train_dataset, batch_size=256, sampler=sampler)
+train_loader = DataLoader(
+    train_dataset, batch_size=256, sampler=train_dataset.get_weighted_sampler()
+)
 test_loader = DataLoader(test_dataset, batch_size=256)
 
 # 定义模型
-# model = models.resnet18(weights="IMAGENET1K_V1")
-# num_ftrs = model.fc.in_features
-# model.fc = nn.Linear(num_ftrs, 4)  # 4 classes
-model = pplcnet.PPLCNet_x0_5(num_classes=4)
+if args.model == 'resnet18':
+    model = models.resnet18(pretrained=True)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, 4)  # 4 classes
+else:
+    model = getattr(pplcnet, args.model)(num_classes=4)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
-model_name = model.__class__.__name__
-if hasattr(model, 'scale'):
-    model_name += f'_{getattr(model, "scale")}'
-model_p = f'model_{model_name}.pth'
-if os.path.exists(model_p):
-    model.load_state_dict(torch.load(model_p))
+if args.load_model:
+    model.load_state_dict(torch.load(args.load_model))
 
 # 定义损失函数和优化器
-criterion_weight = torch.Tensor([
-    class_weights[cls] 
-    for cls in ImageDataset.label_types
-]).to(device)
-print(f'{criterion_weight=} {class_weights=}')
+criterion_weight = train_dataset.get_class_weights().to(device)
+print(f'{criterion_weight=}')
+
 criterion = nn.CrossEntropyLoss(weight=criterion_weight)
-# class FocalLoss(nn.Module):
-#     def __init__(self, alpha=1, gamma=2):
-#         super(FocalLoss, self).__init__()
-#         self.alpha = alpha
-#         self.gamma = gamma
-    
-#     def forward(self, inputs, targets):
-#         ce_loss = F.cross_entropy(inputs, targets, reduction='none')
-#         pt = torch.exp(-ce_loss)
-#         focal_loss = self.alpha * (1-pt)**self.gamma * ce_loss
-#         return focal_loss.mean()
+optimizer = getattr(optim, args.optimizer)(model.parameters(), lr=args.lr)
 
-# criterion = FocalLoss()
-
-optimizer = optim.SGD(model.parameters(), lr=0.001)
-
-log_dir = Path(f'runs/{datetime.now():%Y%m%d-%H%M}')
-writer = SummaryWriter(log_dir=log_dir)
+writer = SummaryWriter(log_dir=args.log_dir)
 
 # 训练函数
 def train(model, loader, criterion, optimizer, epoch):
@@ -153,13 +130,13 @@ def train(model, loader, criterion, optimizer, epoch):
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(labels.cpu().numpy())
 
-        writer.add_scalar('training loss', running_loss, epoch * len(loader) + i)
+        writer.add_scalar('loss/training loss', running_loss, epoch * len(loader) + i)
         running_loss = 0.0
     # print(all_labels, all_preds)
     cm = confusion_matrix(all_labels, all_preds)
     fig, ax = plt.subplots(figsize=(10, 10))
     sns.heatmap(cm, annot=True, fmt='d', ax=ax)
-    writer.add_figure('training confusion matrix', fig, epoch)
+    writer.add_figure('cfmtx/training confusion matrix', fig, epoch)
 
 # 测试函数
 def test(model, loader, criterion, epoch):
@@ -182,24 +159,26 @@ def test(model, loader, criterion, epoch):
     test_loss /= len(loader.dataset)
     accuracy = 100. * correct / len(loader.dataset)
 
-    writer.add_scalar('test loss', test_loss, epoch)
+    writer.add_scalar('loss/test loss', test_loss, epoch)
     writer.add_scalar('test accuracy', accuracy, epoch)
 
     cm = confusion_matrix(all_labels, all_preds)
     fig, ax = plt.subplots(figsize=(10, 10))
     sns.heatmap(cm, annot=True, fmt='d', ax=ax)
-    writer.add_figure('test confusion matrix', fig, epoch)
+    writer.add_figure('cfmtx/test confusion matrix', fig, epoch)
 
     return test_loss, accuracy
 
 # 训练循环
-num_epochs = 200
+num_epochs = args.num_epochs
 for epoch in range(num_epochs):
     train(model, train_loader, criterion, optimizer, epoch)
     test_loss, accuracy = test(model, test_loader, criterion, epoch)
     print(f'Epoch {epoch+1}/{num_epochs}, Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
-    torch.save(model.state_dict(), model_p)
+    torch.save(model.state_dict(), args.log_dir / f"{args.model}.pth")
+    args.last_epoch = epoch
 writer.close()
+args.save()
 
 # 保存模型
