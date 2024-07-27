@@ -89,7 +89,7 @@ class ImageDataset(Dataset):
 
         return image, label
 
-    def get_class_weights(self):
+    def get_class_weights(self) -> np.ndarray:
         class_weights = np.zeros(len(self.label_types))
         for label in self.label_indices:
             class_weights[label] += 1

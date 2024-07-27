@@ -45,7 +45,8 @@ from pplcnet import PPLCNet_x1_5
 model = PPLCNet_x1_5(num_classes=4)
 model.eval()
 
-model.load_state_dict(torch.load('runs/20240726-225616/PPLCNet_x1_5.pth'))
+# model.load_state_dict(torch.load('runs/20240726-225616/PPLCNet_x1_5.pth'))
+model.load_state_dict(torch.load('runs/20240727-150957/PPLCNet_x1_5.pth'))
 # %%
 imgs_ts = torch.stack([img for img, _ in dataset])
 labels = torch.tensor([label for _, label in dataset])

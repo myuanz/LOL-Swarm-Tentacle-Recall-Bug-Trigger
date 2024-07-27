@@ -101,7 +101,7 @@ if args.load_model:
     model.load_state_dict(torch.load(args.load_model))
 
 # 定义损失函数和优化器
-criterion_weight = train_dataset.get_class_weights().to(device)
+criterion_weight = torch.Tensor(train_dataset.get_class_weights()).to(device)
 print(f'{criterion_weight=}')
 
 criterion = nn.CrossEntropyLoss(weight=criterion_weight)
