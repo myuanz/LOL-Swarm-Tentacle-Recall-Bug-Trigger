@@ -4,6 +4,9 @@ import json
 from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QWidget
 from PySide6.QtGui import QPixmap, QKeyEvent
 from PySide6.QtCore import Qt
+from pathlib import Path
+import numpy as np
+from PySide6.QtWidgets import QMessageBox
 
 class ImageLabelingApp(QMainWindow):
     def __init__(self):
@@ -11,10 +14,19 @@ class ImageLabelingApp(QMainWindow):
         self.setWindowTitle("Image Labeling App")
         self.setGeometry(100, 100, 800, 600)
 
-        self.image_folder = "./data/frames"
-        self.labels_file = "./labels.json"
+        self.image_folder = Path("./data/2024-07-25-21-36-48")
+        self.labels_file = self.image_folder / "labels.json"
+        self.preds_file = self.image_folder / "preds.npy"
+        if self.preds_file.exists():
+            self.preds = np.load(self.preds_file)
+        else:
+            self.preds = None
+
         self.label_types = ["普通人物", "动作人物", "选择卡片", "其他"]
-        self.image_files = [f for f in os.listdir(self.image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        self.image_files = [f for f in sorted(os.listdir(self.image_folder)) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if self.preds is not None:
+            assert len(self.image_files) == len(self.preds)
+
         self.current_index = 0
 
         self.load_labels()
@@ -27,18 +39,28 @@ class ImageLabelingApp(QMainWindow):
         self.image_label.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(self.image_label)
 
-        button_layout = QHBoxLayout()
+        label_button_layout = QHBoxLayout()
         self.buttons = []
         for i, label_type in enumerate(self.label_types):
             button = QPushButton(label_type)
             button.clicked.connect(lambda checked, lt=label_type: self.label_image(lt))
-            button_layout.addWidget(button)
+            label_button_layout.addWidget(button)
             self.buttons.append(button)
+            
+        utils_button_layout = QHBoxLayout()
         next_action_button = QPushButton("Next Action")
         next_action_button.clicked.connect(self.to_next_action)
-        main_layout.addWidget(next_action_button)
+        save_button = QPushButton("Save Labels")
+        save_button.clicked.connect(self.save_labels)
+        load_pred_button = QPushButton("Load Preds")
+        load_pred_button.clicked.connect(self.load_preds)
 
-        main_layout.addLayout(button_layout)
+        utils_button_layout.addWidget(next_action_button)
+        utils_button_layout.addWidget(save_button)
+        utils_button_layout.addWidget(load_pred_button)
+
+        main_layout.addLayout(label_button_layout)
+        main_layout.addLayout(utils_button_layout)
 
         nav_layout = QHBoxLayout()
         self.prev_button = QPushButton("Previous")
@@ -56,6 +78,24 @@ class ImageLabelingApp(QMainWindow):
 
         self.show_image()
 
+    def load_preds(self):
+        if self.preds is None:
+            return
+        if len(self.labels) != 0:
+            msg_box = QMessageBox()
+            msg_box.setText("真的要载入吗? 会覆盖已有标签")
+            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg_box.setDefaultButton(QMessageBox.Yes)
+            response = msg_box.exec()
+
+            if response != QMessageBox.Yes:
+                return
+
+        print("Loading preds...", self.image_files)
+        for pred, image_file in zip(self.preds, self.image_files):
+            self.labels[image_file] = self.label_types[pred.argmax()]
+        QMessageBox.information(self, "Success", f"载入成功 {len(self.labels)} 个标签")
+        
     def load_labels(self):
         if os.path.exists(self.labels_file):
             with open(self.labels_file, 'r') as f:
@@ -80,7 +120,7 @@ class ImageLabelingApp(QMainWindow):
     def label_image(self, label_type):
         current_image = self.image_files[self.current_index]
         self.labels[current_image] = label_type
-        self.save_labels()
+        # self.save_labels()
         self.show_next()
 
     def to_next_action(self):

@@ -2,6 +2,10 @@ import time
 import mss
 import cv2
 import numpy as np
+import torch
+import pplcnet
+from torchvision import transforms
+from datetime import datetime
 
 left = 850
 top = 400
@@ -18,6 +22,16 @@ dst_left = int(left * scale)
 dst_top  = int(top * scale)
 new_width = int(width * scale)
 
+
+model = pplcnet.PPLCNet_x1_0(num_classes=4)
+model.load_state_dict(torch.load('PPLCNet1.0.pth', map_location='cpu'))
+model.eval()
+
+eval_transform = transforms.Compose([
+    transforms.ToTensor(),
+])
+
+
 with mss.mss() as sct:
     i = 0
     while True:
@@ -26,8 +40,11 @@ with mss.mss() as sct:
             'width': new_width, 'height': new_width
         })
         img = np.array(img)
-        img = cv2.resize(img, (width, width))
-        
-        cv2.imwrite(f'data/snapshot/{i:07d}.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-        time.sleep(1)
+        img = cv2.resize(img, (width, width))[..., :3]
+        img_ts = eval_transform(img).unsqueeze(0)
+        pred = model(img_ts)
+        pred_label = pred.argmax(dim=1).item()
+        print(datetime.now(), pred_label, pred)
+        # cv2.imwrite(f'data/snapshot07252130/{i:07d}.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+        time.sleep(0.05)
         i += 1
