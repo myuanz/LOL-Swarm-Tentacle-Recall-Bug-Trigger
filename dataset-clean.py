@@ -15,7 +15,6 @@ import torch.optim as optim
 from PIL import Image
 from sklearn.metrics import confusion_matrix
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
-from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
 from pathlib import Path
 from tqdm import tqdm
@@ -23,6 +22,7 @@ from dataset import ImageDataset
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # %%
 eval_transform = A.Compose([
     A.Normalize(mean=0, std=1),
@@ -30,7 +30,7 @@ eval_transform = A.Compose([
 ])
 
 dataset = ImageDataset([
-    Path("./data/frames"), Path("./data/2024-07-25-21-36-48/")
+    Path("./data/2024-07-25-21-36-48/")
 ], transform=eval_transform)
 train_dataset, test_dataset = dataset.split(test_size=0.2, train_transform=eval_transform, test_transform=eval_transform)
 # %%
@@ -45,17 +45,33 @@ plt.colorbar()
 plt.title(label)
 # %%
 from pplcnet import PPLCNet_x1_5
+from torchvision import models
 
-model = PPLCNet_x1_5(num_classes=4)
+# model = PPLCNet_x1_5(num_classes=4).to(device)
+# model.load_state_dict(torch.load('runs/20240726-225616/PPLCNet_x1_5.pth'))
+# model.load_state_dict(torch.load('runs/20240728-162337/PPLCNet_x1_5.pth'))
+
+model = models.resnet18(num_classes=4).to(device)
+model.load_state_dict(torch.load('runs/20240728-182521/resnet18.pth'))
 model.eval()
 
-# model.load_state_dict(torch.load('runs/20240726-225616/PPLCNet_x1_5.pth'))
-model.load_state_dict(torch.load('runs/20240727-150957/PPLCNet_x1_5.pth'))
 # %%
 imgs_ts = torch.stack([img for img, _ in dataset])
 labels = torch.tensor([label for _, label in dataset])
 # %%
-preds = model(imgs_ts)
+
+dataloader = DataLoader(dataset, batch_size=32, pin_memory=True)
+preds = []
+
+tensor_in_cuda = next(iter(dataloader))[0].to(device)
+with torch.no_grad():
+    for imgs, _ in tqdm(dataloader):
+        B = imgs.size(0)
+        tensor_in_cuda[:B, ...].copy_(imgs)
+        
+        pred = model(tensor_in_cuda[:B]).cpu()
+        preds.append(pred)
+    preds = torch.cat(preds)
 # %%
 preds_label = preds.argmax(dim=1)
 preds_label
@@ -72,12 +88,11 @@ for i, (pred_label, true_label, img_ts) in enumerate(zip(preds_label, labels, im
 
 # %%
 
-
-imgs_confusion_mtx[(0, 1)]
+len(imgs_confusion_mtx[(0, 1)])
 # %%
 from torchvision.utils import make_grid
 
-to_show = [i[0] for i in imgs_confusion_mtx[(1, 0)][:80]]
+to_show = [i[0] for i in imgs_confusion_mtx[(1, 0)][:40]]
 
 grid = make_grid(to_show, nrow=4, padding=2, normalize=True)
 
