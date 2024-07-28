@@ -144,7 +144,7 @@ class BeepExportor(Exportor):
         pass
     def add_pred(self, pred: np.ndarray, t: float) -> None:
         curr_pred = PredWithTime.from_pred(pred, t=t)
-        print(curr_pred, self.pred_beep_time, self.all_period[-2:])
+        # print(curr_pred, self.pred_beep_time, self.all_period[-2:])
         
         if curr_pred.label == self.last_event.label:
             self.all_period[-1].end = curr_pred
