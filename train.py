@@ -1,15 +1,16 @@
 import json
 import os
+import time
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Literal
 
+import serde.json as sjson
 import tyro
 from beartype import beartype
 from serde import serde
-import serde.json as sjson
 
 @serde
 @dataclass
@@ -44,6 +45,8 @@ if args.load_model and not args.load_model.exists():
 args.log_dir.mkdir(parents=True, exist_ok=True)
 args.save()
 
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'
+import albumentations as A
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -52,37 +55,46 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from albumentations.pytorch import ToTensorV2
 from PIL import Image
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
-from dataset import ImageDataset
+
 import pplcnet
+from dataset import ImageDataset
 
 # 定义数据增强和归一化
-train_transform = transforms.Compose([
-    transforms.ToTensor(),
-
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-    # transforms.RandomRotation(10),
-    transforms.RandomErasing(p=0.2),
+train_transform = A.Compose([
+    A.ChannelShuffle(p=0.5),
+    A.ColorJitter(p=0.5),
+    A.Rotate(limit=90, p=1.0),
+    A.CoarseDropout(
+        max_holes=8, max_height=8, max_width=8, 
+        min_holes=1, min_height=8, min_width=8, 
+        fill_value=0, p=0.2
+    ),
+    A.Normalize(mean=0, std=255),
+    ToTensorV2(),
 ])
 
-test_transform = transforms.Compose([
-    transforms.ToTensor(),
+test_transform = A.Compose([
+    A.Normalize(mean=0, std=255),
+    ToTensorV2(),
 ])
 
 
 total_dataset = ImageDataset(
-    [Path("./data/frames"), Path('./data/2024-07-25-21-36-48/')], 
+    [Path('./data/2024-07-25-21-36-48/')], 
 )
 train_dataset, test_dataset = total_dataset.split(test_size=args.test_size, train_transform=train_transform, test_transform=test_transform)
 
 
 train_loader = DataLoader(
-    train_dataset, batch_size=256, sampler=train_dataset.get_weighted_sampler()
+    train_dataset, batch_size=256, sampler=train_dataset.get_weighted_sampler(),
+    num_workers=4, pin_memory=True
 )
 test_loader = DataLoader(test_dataset, batch_size=256)
 
@@ -149,6 +161,7 @@ def test(model, loader, criterion, epoch):
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device), labels.to(device)
+            # print(inputs.dtype, labels.dtype)
             outputs = model(inputs)
             test_loss += criterion(outputs, labels).item()
             _, preds = torch.max(outputs, 1)
@@ -171,13 +184,19 @@ def test(model, loader, criterion, epoch):
 
 # 训练循环
 num_epochs = args.num_epochs
+t0 = time.time()
 for epoch in range(num_epochs):
     train(model, train_loader, criterion, optimizer, epoch)
-    test_loss, accuracy = test(model, test_loader, criterion, epoch)
-    print(f'Epoch {epoch+1}/{num_epochs}, Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%')
+    if epoch % 2 == 0:
+        test_loss, accuracy = test(model, test_loader, criterion, epoch)
+    eps = (len(train_loader.dataset) + len(test_loader.dataset)) / (time.time() - t0)
+    writer.add_scalar('eps', eps, epoch)
+    print(f'[{epoch+1}/{num_epochs}] Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%, EPS: {eps:.2f}')
 
     torch.save(model.state_dict(), args.log_dir / f"{args.model}.pth")
     args.last_epoch = epoch
+    t0 = time.time()
+
 writer.close()
 args.save()
 

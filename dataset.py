@@ -82,10 +82,9 @@ class ImageDataset(Dataset):
         label = self.label_indices[idx]
 
         if self.transform:
-            image = self.transform(image)
+            image = self.transform(image=image)['image']
         else:
-            # 如果没有提供 transform，至少将图像转换为 tensor
-            image = torch.from_numpy(np.array(image).transpose((2, 0, 1))).float() / 255.0
+            image = torch.from_numpy(np.array(image).transpose((2, 0, 1)))
 
         return image, label
 
