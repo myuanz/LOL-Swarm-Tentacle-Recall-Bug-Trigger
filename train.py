@@ -65,6 +65,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
+from tqdm import tqdm
 
 import pplcnet
 from dataset import ImageDataset
@@ -203,7 +204,7 @@ def test(model, loader, criterion, epoch):
 # 训练循环
 num_epochs = args.num_epochs
 t0 = time.time()
-for epoch in range(num_epochs):
+for epoch in tqdm(range(num_epochs)):
     train(model, train_loader, criterion, optimizer, epoch)
     if epoch % 2 == 0:
         test_loss, accuracy = test(model, test_loader, criterion, epoch)
@@ -217,5 +218,3 @@ for epoch in range(num_epochs):
 
 writer.close()
 args.save()
-
-# 保存模型
