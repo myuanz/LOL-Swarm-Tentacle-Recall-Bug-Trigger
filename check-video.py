@@ -308,12 +308,11 @@ def main(args: RunConfig):
 
 
 if __name__ == "__main__":
-    # tyro.cli(main)
-    # res = tyro.cli(RunConfig)
-    res = RunConfig(
-        video_path=Path('./data/2024-07-25-21-36-48.mp4'),
-        export_to='beep',
-        skip=1,
-        model_path=Path('./runs/resnet18.onnx'),
-    )
+    res = tyro.cli(RunConfig)
+    # res = RunConfig(
+    #     video_path=Path('./data/2024-07-25-21-36-48.mp4'),
+    #     export_to='beep',
+    #     skip=1,
+    #     model_path=Path('./runs/resnet18.onnx'),
+    # )
     main(res)
