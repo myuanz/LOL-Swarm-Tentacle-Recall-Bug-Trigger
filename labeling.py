@@ -24,8 +24,8 @@ class ImageLabelingApp(QMainWindow):
 
         self.label_types = ["普通人物", "动作人物", "选择卡片", "其他"]
         self.image_files = [f for f in sorted(os.listdir(self.image_folder)) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        if self.preds is not None:
-            assert len(self.image_files) == len(self.preds)
+        if self.preds is not None and len(self.preds) > 0:
+            assert len(self.image_files) == len(self.preds), self.preds
 
         self.current_index = 0
 
