@@ -100,9 +100,22 @@ class PredWithTime:
     def __repr__(self):
         return f'Pred({self.label} | {", ".join(f"{p:.2f}" for p in self.pred)} @ {self.time:.3f}s)'
 @dataclass
-class PredWithIdx:
-    pred: PredWithTime
+class PredPeriod:
+    begin: PredWithTime
+    end: PredWithTime
     idx: int
+
+    @property
+    def period(self) -> float:
+        return self.end.time - self.begin.time
+
+    @property
+    def begin_time(self) -> float:
+        return self.begin.time
+    
+    @property
+    def end_time(self) -> float:
+        return self.end.time
 
 NORMAL_EVENT: int = 0
 ACT_EVENT   : int = 1
@@ -115,18 +128,14 @@ class BeepExportor(Exportor):
             ACT_EVENT: [], NORMAL_EVENT: [], 
             CARD_EVENT: [], OTHER_EVENT: [],
         }
-        self.tgt_events: list[PredWithTime] = [] # 仅包含 ACT_EVENT 和 CARD_EVENT, 且只有一簇的首个
+        self.all_period: list[PredPeriod] = []
         self.last_event = PredWithTime(np.zeros(4), -1, 0)
         self.pred_beep_time = 0
         self.i = 0
         
-    def seek(self, label: int, i: int=-1) -> PredWithIdx:
-        print(self.label_index, label, i)
+    def seek(self, label: int, i: int=-1) -> PredPeriod:
         idx = self.label_index[label][i]
-        return PredWithIdx(
-            pred=self.tgt_events[idx],
-            idx=idx
-        )
+        return self.all_period[idx]
     
     def count(self, label: int) -> int:
         return len(self.label_index[label])
@@ -135,63 +144,67 @@ class BeepExportor(Exportor):
         pass
     def add_pred(self, pred: np.ndarray, t: float) -> None:
         curr_pred = PredWithTime.from_pred(pred, t=t)
-        print(curr_pred, self.pred_beep_time, self.tgt_events)
-        if curr_pred.label != self.last_event.label:
-            # 当前事件类型与上一个不同才有用, 其他都是平凡的
-            if curr_pred.label == ACT_EVENT:
-                if self.count(ACT_EVENT) == 0 or curr_pred.time - self.seek(ACT_EVENT, -1).pred.time > 1:
-                    # 间隔大于 1s, 可以认为是新的一簇
-                    self.label_index[curr_pred.label].append(len(self.tgt_events))
-                    self.tgt_events.append(curr_pred)
-            elif curr_pred.label == CARD_EVENT:
-                if self.count(CARD_EVENT) == 0 or curr_pred.time - self.seek(CARD_EVENT, -1).pred.time > 0.1:
-                    # 间隔大于 0.1s, 可以认为是新的一簇
-                    self.label_index[curr_pred.label].append(len(self.tgt_events))
-                    self.tgt_events.append(curr_pred)
-            
+        print(curr_pred, self.pred_beep_time, self.all_period[-2:])
+        
+        if curr_pred.label == self.last_event.label:
+            self.all_period[-1].end = curr_pred
+        else:
+            thr = {
+                ACT_EVENT: 0.5, CARD_EVENT: 0.1, NORMAL_EVENT: 0.1, OTHER_EVENT: 0.1
+            }[curr_pred.label]
+
             if (
-                curr_pred.label != ACT_EVENT 
-            ) and self.label_index[ACT_EVENT].__len__() >= 2:
-                # 当前不是 ACT_EVENT, 但 ACT_EVENT 有两个以上, 可以用来计算下次 act 在何时
-                self.pred_beep_time = self.calc_beep_time()
-                print(f'{self.pred_beep_time=}')
-                
-        if self.pred_beep_time > 0 and self.pred_beep_time - curr_pred.time < 0.5:
-            # 距离预测的act时间小于0.5s, 则发出提示音
-            print(f'将在 {self.pred_beep_time} 捶地')
+                self.count(curr_pred.label) > 0
+                and (last_same_label_event := self.seek(curr_pred.label, -1))
+                and curr_pred.time - last_same_label_event.end_time < thr
+            ):
+                last_same_label_event.end = curr_pred
+            else:
+                self.label_index[curr_pred.label].append(len(self.all_period))
+
+                self.all_period.append(PredPeriod(
+                    begin=curr_pred, end=curr_pred,
+                    idx=len(self.all_period),
+                ))
+
+        if curr_pred.label != ACT_EVENT and self.label_index[ACT_EVENT].__len__() >= 2:
+            # 当前不是 ACT_EVENT, 但 ACT_EVENT 有两个以上, 可以用来计算下次 act 在何时
+            self.pred_beep_time = self.calc_beep_time()
+            # print(f'new {self.pred_beep_time=}')
+
+        # if self.pred_beep_time > 0 and self.pred_beep_time - curr_pred.time < 0.5:
+        #     # 距离预测的act时间小于0.5s, 则发出提示音
+        #     print(f'将在 {self.pred_beep_time} 捶地')
             # import winsound
             # winsound.Beep(1000, int((curr_pred_beep_time - curr_pred.time) * 1000))
         
         self.preds.append(curr_pred)
-        # if curr_pred.label in {ACT_EVENT, CARD_EVENT}:
-        #     self.label_index[curr_pred.label].append(len(self.tgt_events))
-            # self.tgt_events.append(curr_pred)
-
         self.i += 1
         self.last_event = curr_pred
+
     def calc_beep_time(self) -> float:
         assert len(self.label_index[ACT_EVENT]) >= 2
-        start_act = self.seek(ACT_EVENT, -2)
-        end_act = self.seek(ACT_EVENT, -1)
+        first_act = self.seek(ACT_EVENT, -2)
+        second_act = self.seek(ACT_EVENT, -1)
 
-        duration = end_act.pred.time - start_act.pred.time
-        leave_idxs = list(range(start_act.idx, end_act.idx))
+        duration = second_act.begin_time - first_act.begin_time
+        leave_idxs = list(range(first_act.idx, second_act.idx))
         
-        for curr_idx, next_idx in zip(leave_idxs, leave_idxs[1:]):
-            curr_event = self.tgt_events[curr_idx]
-            next_event = self.tgt_events[next_idx]
+        for idx in leave_idxs:
+            p = self.all_period[idx]
+            if p.begin.label != CARD_EVENT:
+                continue
             
-            if curr_event.label == CARD_EVENT:
-                duration -= next_event.time - curr_event.time
+            duration -= p.period
 
-        pred_beep_time = end_act.pred.time + duration
-        leave_idxs = list(range(end_act.idx, len(self.tgt_events)))
-        for curr_idx, next_idx in zip(leave_idxs, leave_idxs[1:]):
-            curr_event = self.tgt_events[curr_idx]
-            next_event = self.tgt_events[next_idx]
-            
-            if curr_event.label == CARD_EVENT:
-                pred_beep_time += next_event.time - curr_event.time
+        pred_beep_time = second_act.begin_time + duration
+        leave_idxs = list(range(second_act.idx + 1, len(self.all_period)))
+        for idx in leave_idxs:
+            p = self.all_period[idx]
+            if p.begin.label != CARD_EVENT:
+                continue
+            pred_beep_time += p.period            
+
         return pred_beep_time
         
     def release(self) -> None:
@@ -269,8 +282,10 @@ def main(args: RunConfig):
             raise ValueError(f'unknown export_to: {args.export_to}')
 
     time_list = np.linspace(0, video_clip.duration, int(video_clip.duration * video_clip.fps / args.skip))
-    for t in tqdm(time_list):
-        if t > 15: break
+    time_list = [
+        i for i in time_list if (i > 30 and i < 90) 
+    ]
+    for t in (time_list):
         frame = video_clip.get_frame(t)
         img = crop_image(frame, args.left, args.top, args.width)
 
