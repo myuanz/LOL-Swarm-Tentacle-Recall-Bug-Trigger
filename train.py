@@ -95,16 +95,16 @@ total_dataset = ImageDataset(
 )
 train_dataset, test_dataset = total_dataset.split(test_size=args.test_size, train_transform=train_transform, test_transform=test_transform)
 
-
+weight_add = np.array([0, 0.25, 0, 0])
 train_loader = DataLoader(
-    train_dataset, batch_size=256, sampler=train_dataset.get_weighted_sampler(),
+    train_dataset, batch_size=256, sampler=train_dataset.get_weighted_sampler(weight_add=weight_add),
     num_workers=4, pin_memory=True
 )
 test_loader = DataLoader(test_dataset, batch_size=256)
 
 # 定义模型
 if args.model == 'resnet18':
-    model = models.resnet18(pretrained=True)
+    model = models.resnet18()
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, 4)  # 4 classes
 else:
@@ -117,7 +117,9 @@ if args.load_model:
     model.load_state_dict(torch.load(args.load_model))
 
 # 定义损失函数和优化器
-criterion_weight = torch.Tensor(train_dataset.get_class_weights()).to(device)
+criterion_weight = torch.Tensor(train_dataset.get_class_weights(
+    weight_add=weight_add
+)).to(device)
 print(f'{criterion_weight=}')
 
 criterion = nn.CrossEntropyLoss(weight=criterion_weight)
@@ -204,13 +206,14 @@ def test(model, loader, criterion, epoch):
 # 训练循环
 num_epochs = args.num_epochs
 t0 = time.time()
-for epoch in tqdm(range(num_epochs)):
+for epoch in (bar := tqdm(range(num_epochs))):
     train(model, train_loader, criterion, optimizer, epoch)
     if epoch % 2 == 0:
         test_loss, accuracy = test(model, test_loader, criterion, epoch)
     eps = (len(train_loader.dataset) + len(test_loader.dataset)) / (time.time() - t0)
     writer.add_scalar('eps', eps, epoch)
-    print(f'[{epoch+1}/{num_epochs}] Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%, EPS: {eps:.2f}')
+    # print(f'[{epoch+1}/{num_epochs}] Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%, EPS: {eps:.2f}')
+    bar.set_description(f'Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%, EPS: {eps:.2f}')
 
     torch.save(model.state_dict(), args.log_dir / f"{args.model}.pth")
     args.last_epoch = epoch
