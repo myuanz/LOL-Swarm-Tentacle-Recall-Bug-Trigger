@@ -1,10 +1,10 @@
-import inspect
+# %%
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal, Protocol, Self
+from typing import Literal, Self
 
 import cv2
 import numpy as np
@@ -13,16 +13,11 @@ import orjson
 import tyro
 from moviepy.editor import VideoFileClip
 from serde import serde, to_dict
-from serde.json import from_json, to_json
+from serde.json import to_json
 from tqdm import tqdm
 
 from image_utils import crop_image
 
-# left = 850
-# top = 400
-# width = 224
-# dst_width = 1920
-# dst_height = 1080
 
 def build_preview(img: np.ndarray, pred: np.ndarray) -> np.ndarray:
     img = cv2.resize(img, (512, 512))
@@ -97,31 +92,130 @@ class PredWithTime:
     time: float # seconds
     
     @staticmethod
-    def from_pred(pred: np.ndarray, t: float=-1) -> Self:
+    def from_pred(pred: np.ndarray, t: float=-1) -> 'PredWithTime':
         if t == -1:
             t = time.time()
         return PredWithTime(pred=pred, label=pred.argmax().item(), time=t)
     
+    def __repr__(self):
+        return f'Pred({self.label} | {", ".join(f"{p:.2f}" for p in self.pred)} @ {self.time:.3f}s)'
+@dataclass
+class PredPeriod:
+    begin: PredWithTime
+    end: PredWithTime
+    idx: int
 
+    @property
+    def period(self) -> float:
+        return self.end.time - self.begin.time
+
+    @property
+    def begin_time(self) -> float:
+        return self.begin.time
+    
+    @property
+    def end_time(self) -> float:
+        return self.end.time
+
+NORMAL_EVENT: int = 0
+ACT_EVENT   : int = 1
+CARD_EVENT  : int = 2
+OTHER_EVENT : int = 3
 class BeepExportor(Exportor):
     def __init__(self):
         self.preds: list[PredWithTime] = []
-        self.label_index = {
-            0: [], 1: [], 2: [], 3: []
+        self.label_index: dict[int, list[int]] = {
+            ACT_EVENT: [], NORMAL_EVENT: [], 
+            CARD_EVENT: [], OTHER_EVENT: [],
         }
+        self.all_period: list[PredPeriod] = []
+        self.last_event = PredWithTime(np.zeros(4), -1, 0)
+        self.pred_beep_time = 0
         self.i = 0
         
-    def add_frame(self, frame: np.ndarray) -> None:
+    def seek(self, label: int, i: int=-1) -> PredPeriod:
+        idx = self.label_index[label][i]
+        return self.all_period[idx]
+    
+    def count(self, label: int) -> int:
+        return len(self.label_index[label])
+
+    def add_frame(self, frame: np.ndarray, t: float) -> None:
         pass
-    def add_pred(self, pred: np.ndarray) -> None:
-        self.preds.append(PredWithTime.from_pred(pred))
-        curr_pred = self.preds[-1]
-        self.label_index[curr_pred.label].append(curr_pred)
+    def add_pred(self, pred: np.ndarray, t: float) -> None:
+        curr_pred = PredWithTime.from_pred(pred, t=t)
+        # print(curr_pred, self.pred_beep_time, self.all_period[-2:])
         
+        if curr_pred.label == self.last_event.label:
+            self.all_period[-1].end = curr_pred
+        else:
+            thr = {
+                ACT_EVENT: 0.5, CARD_EVENT: 0.1, NORMAL_EVENT: 0.1, OTHER_EVENT: 0.1
+            }[curr_pred.label]
+
+            if (
+                self.count(curr_pred.label) > 0
+                and (last_same_label_event := self.seek(curr_pred.label, -1))
+                and curr_pred.time - last_same_label_event.end_time < thr
+            ):
+                last_same_label_event.end = curr_pred
+            else:
+                self.label_index[curr_pred.label].append(len(self.all_period))
+
+                self.all_period.append(PredPeriod(
+                    begin=curr_pred, end=curr_pred,
+                    idx=len(self.all_period),
+                ))
+
+        if curr_pred.label != ACT_EVENT and self.label_index[ACT_EVENT].__len__() >= 2:
+            # 当前不是 ACT_EVENT, 但 ACT_EVENT 有两个以上, 可以用来计算下次 act 在何时
+            self.pred_beep_time = self.calc_beep_time()
+            # print(f'new {self.pred_beep_time=}')
+
+        # if self.pred_beep_time > 0 and self.pred_beep_time - curr_pred.time < 0.5:
+        #     # 距离预测的act时间小于0.5s, 则发出提示音
+        #     print(f'将在 {self.pred_beep_time} 捶地')
+            # import winsound
+            # winsound.Beep(1000, int((curr_pred_beep_time - curr_pred.time) * 1000))
+        
+        self.preds.append(curr_pred)
+        self.i += 1
+        self.last_event = curr_pred
+
+    def calc_beep_time(self) -> float:
+        assert len(self.label_index[ACT_EVENT]) >= 2
+        first_act = self.seek(ACT_EVENT, -2)
+        second_act = self.seek(ACT_EVENT, -1)
+
+        duration = second_act.begin_time - first_act.begin_time
+        leave_idxs = list(range(first_act.idx, second_act.idx))
+        
+        for idx in leave_idxs:
+            p = self.all_period[idx]
+            if p.begin.label != CARD_EVENT:
+                continue
+            
+            duration -= p.period
+
+        pred_beep_time = second_act.begin_time + duration
+        leave_idxs = list(range(second_act.idx + 1, len(self.all_period)))
+        for idx in leave_idxs:
+            p = self.all_period[idx]
+            if p.begin.label != CARD_EVENT:
+                continue
+            pred_beep_time += p.period            
+
+        return pred_beep_time
         
     def release(self) -> None:
         pass
+
+    def __enter__(self):
+        return self
     
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.release()
+
 
 class ImageExportor(Exportor):
     def __init__(self, base_path: Path):
@@ -151,7 +245,7 @@ class ImageExportor(Exportor):
 class RunConfig:
     video_path: tyro.conf.Positional[Path]
     dst: Path|None = None
-    export_to: Literal['video', 'image'] = 'video'
+    export_to: Literal['video', 'image', 'beep'] = 'video'
     skip: int = 10
     model_path: Path = Path('./runs/PPLCNet_x1_5.onnx')
     enable_predict: bool = True
@@ -176,10 +270,22 @@ def main(args: RunConfig):
         raise FileExistsError(f'{export_path} already exists')
     export_path.mkdir(parents=True, exist_ok=True)
 
-    exportor: Exportor = VideoExportor(export_path, 512, 512) if args.export_to == 'video' else ImageExportor(export_path)
+    # exportor: Exportor = VideoExportor(export_path, 512, 512) if args.export_to == 'video' else ImageExportor(export_path)
+    match args.export_to:
+        case 'video':
+            exportor: Exportor = VideoExportor(export_path, 512, 512)
+        case 'image':
+            exportor: Exportor = ImageExportor(export_path)
+        case 'beep':
+            exportor: Exportor = BeepExportor()
+        case _:
+            raise ValueError(f'unknown export_to: {args.export_to}')
 
     time_list = np.linspace(0, video_clip.duration, int(video_clip.duration * video_clip.fps / args.skip))
-    for t in tqdm(time_list):
+    time_list = [
+        i for i in time_list if (i > 30 and i < 90) 
+    ]
+    for t in (time_list):
         frame = video_clip.get_frame(t)
         img = crop_image(frame, args.left, args.top, args.width)
 
@@ -202,6 +308,11 @@ def main(args: RunConfig):
 
 
 if __name__ == "__main__":
-    # tyro.cli(main)
     res = tyro.cli(RunConfig)
+    # res = RunConfig(
+    #     video_path=Path('./data/2024-07-25-21-36-48.mp4'),
+    #     export_to='beep',
+    #     skip=1,
+    #     model_path=Path('./runs/resnet18.onnx'),
+    # )
     main(res)
