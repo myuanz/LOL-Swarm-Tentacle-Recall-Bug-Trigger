@@ -76,12 +76,12 @@ train_transform = A.Compose([
         min_holes=1, min_height=8, min_width=8, 
         fill_value=0, p=0.2
     ),
-    A.Normalize(mean=0, std=255),
+    A.Normalize(mean=0, std=1),
     ToTensorV2(),
 ])
 
 test_transform = A.Compose([
-    A.Normalize(mean=0, std=255),
+    A.Normalize(mean=0, std=1),
     ToTensorV2(),
 ])
 
