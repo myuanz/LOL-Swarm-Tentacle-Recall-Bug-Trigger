@@ -21,6 +21,7 @@ dependencies = [
     "tensorboard>=2.17.0",
     "tyro>=0.8.5",
     "pyserde[toml]>=0.19.3",
+    "albumentations>=1.4.12",
 ]
 requires-python = "==3.12.*"
 readme = "README.md"
@@ -33,4 +34,5 @@ distribution = false
 [tool.pdm.dev-dependencies]
 dev = [
     "ipykernel>=6.29.5",
+    "pyinstrument>=4.6.2",
 ]

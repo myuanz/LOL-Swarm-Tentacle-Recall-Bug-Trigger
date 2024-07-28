@@ -20,10 +20,13 @@ from torchvision import models, transforms
 from pathlib import Path
 from tqdm import tqdm
 from dataset import ImageDataset
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 # %%
-eval_transform = transforms.Compose([
-    transforms.ToTensor(),
+eval_transform = A.Compose([
+    A.Normalize(mean=0, std=1),
+    ToTensorV2(),
 ])
 
 dataset = ImageDataset([
@@ -38,6 +41,7 @@ Counter(dataset.all_labels.values())
 img_ts, label = dataset[80]
 img = img_ts.numpy().transpose((1, 2, 0))
 plt.imshow(img)
+plt.colorbar()
 plt.title(label)
 # %%
 from pplcnet import PPLCNet_x1_5

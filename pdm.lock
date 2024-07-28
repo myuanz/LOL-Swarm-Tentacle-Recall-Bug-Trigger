@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:cd0b7baa1ab903fd5a7e39d86f11548fbdaef052e991921faf0348bdc4f884df"
+content_hash = "sha256:687e0a8e489813c4537375518be21f309c4aee8037e5fad4314d389ec5f3743a"
 
 [[package]]
 name = "absl-py"
@@ -16,6 +16,56 @@ groups = ["default"]
 files = [
     {file = "absl-py-2.1.0.tar.gz", hash = "sha256:7820790efbb316739cde8b4e19357243fc3608a152024288513dd968d7d959ff"},
     {file = "absl_py-2.1.0-py3-none-any.whl", hash = "sha256:526a04eadab8b4ee719ce68f204172ead1027549089702d99b9059f129ff1308"},
+]
+
+[[package]]
+name = "albucore"
+version = "0.0.12"
+requires_python = ">=3.8"
+summary = "A high-performance image processing library designed to optimize and extend the Albumentations library with specialized functions for advanced image transformations. Perfect for developers working in computer vision who require efficient and scalable image augmentation."
+groups = ["default"]
+dependencies = [
+    "numpy<2,>=1.24.4",
+    "opencv-python-headless>=4.9.0.80",
+    "tomli>=2.0.1",
+    "typing-extensions>=4.9.0",
+]
+files = [
+    {file = "albucore-0.0.12-py3-none-any.whl", hash = "sha256:7289c4965915d521295843c1744d792069a6e630e1fafd40c151f1b958b57a48"},
+    {file = "albucore-0.0.12.tar.gz", hash = "sha256:f8b271f8130ef79434803de8fb58245ee8d6b6f846600471146558a98a18ae7d"},
+]
+
+[[package]]
+name = "albumentations"
+version = "1.4.12"
+requires_python = ">=3.8"
+summary = "An efficient library for image augmentation, providing extensive transformations to support machine learning and computer vision tasks."
+groups = ["default"]
+dependencies = [
+    "PyYAML",
+    "albucore>=0.0.11",
+    "eval-type-backport",
+    "numpy>=1.24.4",
+    "opencv-python-headless>=4.9.0.80",
+    "pydantic>=2.7.0",
+    "scikit-image>=0.21.0",
+    "scipy>=1.10.0",
+    "typing-extensions>=4.9.0",
+]
+files = [
+    {file = "albumentations-1.4.12-py3-none-any.whl", hash = "sha256:1da512fba0093e297fae387a0ecba0252054606680878bf71d5d5f63e88cde07"},
+    {file = "albumentations-1.4.12.tar.gz", hash = "sha256:092a9180a080e53870fb866243994bb778dd6253842f307b351855aeed7d7316"},
+]
+
+[[package]]
+name = "annotated-types"
+version = "0.7.0"
+requires_python = ">=3.8"
+summary = "Reusable constraint types to use with typing.Annotated"
+groups = ["default"]
+files = [
+    {file = "annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53"},
+    {file = "annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89"},
 ]
 
 [[package]]
@@ -176,6 +226,17 @@ files = [
 ]
 
 [[package]]
+name = "eval-type-backport"
+version = "0.2.0"
+requires_python = ">=3.8"
+summary = "Like `typing._eval_type`, but lets older Python versions use newer typing features."
+groups = ["default"]
+files = [
+    {file = "eval_type_backport-0.2.0-py3-none-any.whl", hash = "sha256:ac2f73d30d40c5a30a80b8739a789d6bb5e49fdffa66d7912667e2015d9c9933"},
+    {file = "eval_type_backport-0.2.0.tar.gz", hash = "sha256:68796cfbc7371ebf923f03bdf7bef415f3ec098aeced24e054b253a0e78f7b37"},
+]
+
+[[package]]
 name = "executing"
 version = "2.0.1"
 requires_python = ">=3.5"
@@ -255,7 +316,6 @@ version = "2.34.2"
 requires_python = ">=3.8"
 summary = "Library for reading and writing a wide range of image, video, scientific, and volumetric data formats."
 groups = ["default"]
-marker = "python_version >= \"3.4\""
 dependencies = [
     "numpy",
     "pillow>=8.3.2",
@@ -425,6 +485,20 @@ files = [
     {file = "kiwisolver-1.4.5-cp312-cp312-win32.whl", hash = "sha256:72d40b33e834371fd330fb1472ca19d9b8327acb79a5821d4008391db8e29f20"},
     {file = "kiwisolver-1.4.5-cp312-cp312-win_amd64.whl", hash = "sha256:2c5674c4e74d939b9d91dda0fae10597ac7521768fec9e399c70a1f27e2ea2d9"},
     {file = "kiwisolver-1.4.5.tar.gz", hash = "sha256:e57e563a57fb22a142da34f38acc2fc1a5c864bc29ca1517a88abc963e60d6ec"},
+]
+
+[[package]]
+name = "lazy-loader"
+version = "0.4"
+requires_python = ">=3.7"
+summary = "Makes it easy to load subpackages and functions on demand."
+groups = ["default"]
+dependencies = [
+    "packaging",
+]
+files = [
+    {file = "lazy_loader-0.4-py3-none-any.whl", hash = "sha256:342aa8e14d543a154047afb4ba8ef17f5563baad3fc610d7b15b213b0f119efc"},
+    {file = "lazy_loader-0.4.tar.gz", hash = "sha256:47c75182589b91a4e1a85a136c074285a5ad4d9f39c63e0d7fb76391c4574cd1"},
 ]
 
 [[package]]
@@ -1022,6 +1096,36 @@ files = [
 ]
 
 [[package]]
+name = "pydantic"
+version = "2.8.2"
+requires_python = ">=3.8"
+summary = "Data validation using Python type hints"
+groups = ["default"]
+dependencies = [
+    "annotated-types>=0.4.0",
+    "pydantic-core==2.20.1",
+    "typing-extensions>=4.6.1; python_version < \"3.13\"",
+]
+files = [
+    {file = "pydantic-2.8.2-py3-none-any.whl", hash = "sha256:73ee9fddd406dc318b885c7a2eab8a6472b68b8fb5ba8150949fc3db939f23c8"},
+    {file = "pydantic-2.8.2.tar.gz", hash = "sha256:6f62c13d067b0755ad1c21a34bdd06c0c12625a22b0fc09c6b149816604f7c2a"},
+]
+
+[[package]]
+name = "pydantic-core"
+version = "2.20.1"
+requires_python = ">=3.8"
+summary = "Core functionality for Pydantic validation and serialization"
+groups = ["default"]
+dependencies = [
+    "typing-extensions!=4.7.0,>=4.6.0",
+]
+files = [
+    {file = "pydantic_core-2.20.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:26dc97754b57d2fd00ac2b24dfa341abffc380b823211994c4efac7f13b9e90e"},
+    {file = "pydantic_core-2.20.1.tar.gz", hash = "sha256:26ca695eeee5f9f1aeeb211ffc12f10bcb6f71e2989988fda61dabd65db878d4"},
+]
+
+[[package]]
 name = "pygments"
 version = "2.18.0"
 requires_python = ">=3.8"
@@ -1030,6 +1134,17 @@ groups = ["default", "dev"]
 files = [
     {file = "pygments-2.18.0-py3-none-any.whl", hash = "sha256:b8e6aca0523f3ab76fee51799c488e38782ac06eafcf95e7ba832985c8e7b13a"},
     {file = "pygments-2.18.0.tar.gz", hash = "sha256:786ff802f32e91311bff3889f6e9a86e81505fe99f2735bb6d60ae0c5004f199"},
+]
+
+[[package]]
+name = "pyinstrument"
+version = "4.6.2"
+requires_python = ">=3.7"
+summary = "Call stack profiler for Python. Shows you why your code is slow!"
+groups = ["dev"]
+files = [
+    {file = "pyinstrument-4.6.2-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e2e554b1bb0df78f5ce8a92df75b664912ca93aa94208386102af454ec31b647"},
+    {file = "pyinstrument-4.6.2.tar.gz", hash = "sha256:0002ee517ed8502bbda6eb2bb1ba8f95a55492fcdf03811ba13d4806e50dd7f6"},
 ]
 
 [[package]]
@@ -1172,6 +1287,17 @@ files = [
 ]
 
 [[package]]
+name = "pyyaml"
+version = "6.0.1"
+requires_python = ">=3.6"
+summary = "YAML parser and emitter for Python"
+groups = ["default"]
+files = [
+    {file = "PyYAML-6.0.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6c22bec3fbe2524cde73d7ada88f6566758a8f7227bfbf93a408a9d86bcc12a0"},
+    {file = "PyYAML-6.0.1.tar.gz", hash = "sha256:bfdf460b1736c775f2ba9f6a92bca30bc2095067b8a9d77876d1fad6cc3b4a43"},
+]
+
+[[package]]
 name = "pyzmq"
 version = "26.0.3"
 requires_python = ">=3.7"
@@ -1244,6 +1370,27 @@ dependencies = [
 files = [
     {file = "rich-13.7.1-py3-none-any.whl", hash = "sha256:4edbae314f59eb482f54e9e30bf00d33350aaa94f4bfcd4e9e3110e64d0d7222"},
     {file = "rich-13.7.1.tar.gz", hash = "sha256:9be308cb1fe2f1f57d67ce99e95af38a1e2bc71ad9813b0e247cf7ffbcc3a432"},
+]
+
+[[package]]
+name = "scikit-image"
+version = "0.24.0"
+requires_python = ">=3.9"
+summary = "Image processing in Python"
+groups = ["default"]
+dependencies = [
+    "imageio>=2.33",
+    "lazy-loader>=0.4",
+    "networkx>=2.8",
+    "numpy>=1.23",
+    "packaging>=21",
+    "pillow>=9.1",
+    "scipy>=1.9",
+    "tifffile>=2022.8.12",
+]
+files = [
+    {file = "scikit_image-0.24.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8579bda9c3f78cb3b3ed8b9425213c53a25fa7e994b7ac01f2440b395babf660"},
+    {file = "scikit_image-0.24.0.tar.gz", hash = "sha256:5d16efe95da8edbeb363e0c4157b99becbd650a60b77f6e3af5768b66cf007ab"},
 ]
 
 [[package]]
@@ -1420,6 +1567,20 @@ groups = ["default"]
 files = [
     {file = "threadpoolctl-3.5.0-py3-none-any.whl", hash = "sha256:56c1e26c150397e58c4926da8eeee87533b1e32bef131bd4bf6a2f45f3185467"},
     {file = "threadpoolctl-3.5.0.tar.gz", hash = "sha256:082433502dd922bf738de0d8bcc4fdcbf0979ff44c42bd40f5af8a282f6fa107"},
+]
+
+[[package]]
+name = "tifffile"
+version = "2024.7.24"
+requires_python = ">=3.9"
+summary = "Read and write TIFF files"
+groups = ["default"]
+dependencies = [
+    "numpy",
+]
+files = [
+    {file = "tifffile-2024.7.24-py3-none-any.whl", hash = "sha256:f5cce1a915c37bc44ae4a792e3b42c07a30a3fa88406f5c6060a3de076487ed1"},
+    {file = "tifffile-2024.7.24.tar.gz", hash = "sha256:723456ebf2b4918878ae05a7b50fa366ff3b3a686293317eb7a0f294c3eea050"},
 ]
 
 [[package]]
