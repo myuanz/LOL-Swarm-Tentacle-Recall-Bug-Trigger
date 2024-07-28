@@ -88,16 +88,17 @@ class ImageDataset(Dataset):
 
         return image, label
 
-    def get_class_weights(self) -> np.ndarray:
+    def get_class_weights(self, weight_add: np.ndarray=np.zeros(4)) -> np.ndarray:
         class_weights = np.zeros(len(self.label_types))
         for label in self.label_indices:
             class_weights[label] += 1
         class_weights = 1 / class_weights
         class_weights /= class_weights.sum()
+        class_weights += weight_add
         return class_weights
 
-    def get_weighted_sampler(self):
-        class_weights = self.get_class_weights()
+    def get_weighted_sampler(self, weight_add: np.ndarray=np.zeros(4)):
+        class_weights = self.get_class_weights(weight_add)
         sample_weights = [class_weights[label] for label in self.label_indices]
         return WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
 
