@@ -40,7 +40,7 @@ with mss.mss() as sct:
         pred = ort_session.run(None, {'input': img_in})[0][0]
 
         pred_label = pred.argmax()
-        print(datetime.now(), f'{frame_count / (time.time() - start_time):.2f} FPS', pred_label, pred)
+        print(f'[{frame_count}]', pred_label, f'{frame_count / (time.time() - start_time):.2f} FPS', pred)
         
         # cv2.imwrite(f'data/snapshot07252130/{i:07d}.jpg', cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
         # time.sleep(0.05)
