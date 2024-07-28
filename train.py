@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import time
 from collections import Counter
@@ -22,9 +23,11 @@ class TrainConfig:
     ] = 'PPLCNet_x1_5'
 
     optimizer: Literal['SGD', 'Adam', 'AdamW'] = 'Adam'
-    lr: float = 0.0005
+    lr: float = 0.001
+    min_lr: float = 0.0001
     batch_size: int = 256
     num_epochs: int = 200
+    min_lr_epoch: int = 100
 
     load_model: Path | None = None
     log_dir: Path = Path(f'runs/{datetime.now():%Y%m%d-%H%M%S}')
@@ -119,6 +122,13 @@ print(f'{criterion_weight=}')
 criterion = nn.CrossEntropyLoss(weight=criterion_weight)
 optimizer = getattr(optim, args.optimizer)(model.parameters(), lr=args.lr)
 
+
+scheduler = optim.lr_scheduler.StepLR(
+    optimizer, 
+    step_size=1, 
+    gamma=math.pow(args.min_lr / args.lr, 1 / args.min_lr_epoch)
+)
+
 writer = SummaryWriter(log_dir=args.log_dir)
 
 # 训练函数
@@ -150,6 +160,14 @@ def train(model, loader, criterion, optimizer, epoch):
     sns.heatmap(cm, annot=True, fmt='d', ax=ax)
     writer.add_figure('cfmtx/training confusion matrix', fig, epoch)
 
+
+    # 在这里添加调度器的步进
+    scheduler.step()
+
+    # 可选：记录当前的学习率
+    current_lr = optimizer.param_groups[0]['lr']
+    writer.add_scalar('lr', current_lr, epoch)
+    
 # 测试函数
 def test(model, loader, criterion, epoch):
     model.eval()
