@@ -12,14 +12,17 @@ TODO:
 
 ## 模型准备
 
-1. 训练 `train.py`
+1. 训练 `train.py`，大致训练 400 轮就够了，没有任何花哨的技巧
 2. 清洗数据, 重标注漏标、错标 `dataset-clean.py`
 3. 再训练直到效果良好
 4. 导出为 onnx `onnx-export.py`
 
+pth 和 onnx 权重我已经上传到 [release](https://github.com/myuanz/LOL-Swarm-Tentacle-Recall-Bug-Trigger/releases)
+
 TODO:
 
 5. [ ] 量化、剪枝
+
 
 ![训练日志](static/train_log.png)
 ![混淆矩阵](static/conf_mtx.png)
