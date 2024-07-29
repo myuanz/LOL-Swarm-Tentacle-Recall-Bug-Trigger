@@ -15,9 +15,11 @@ from moviepy.editor import VideoFileClip
 from serde import serde, to_dict
 from serde.json import to_json
 from tqdm import tqdm
+from moviepy.video.fx.crop import crop
 
-from image_utils import crop_image
+from image_utils import crop_image, BBox, size_to_bbox
 
+DEBUG = False
 
 def build_preview(img: np.ndarray, pred: np.ndarray) -> np.ndarray:
     img = cv2.resize(img, (512, 512))
@@ -144,7 +146,8 @@ class BeepExportor(Exportor):
         pass
     def add_pred(self, pred: np.ndarray, t: float) -> None:
         curr_pred = PredWithTime.from_pred(pred, t=t)
-        # print(curr_pred, self.pred_beep_time, self.all_period[-2:])
+        if DEBUG:
+            print(curr_pred, self.pred_beep_time, self.all_period[-2:])
         
         if curr_pred.label == self.last_event.label:
             self.all_period[-1].end = curr_pred
@@ -225,7 +228,7 @@ class ImageExportor(Exportor):
         self.i = 0
 
     def add_frame(self, frame: np.ndarray, t: float) -> None:
-        cv2.imwrite(str(self.base_path / f'{t:.3f}.jpg'), frame)
+        cv2.imwrite(str(self.base_path / f'{t:08.3f}.jpg'), frame)
         self.i += 1
 
     def add_pred(self, pred: np.ndarray, t: float) -> None:
@@ -260,6 +263,15 @@ def main(args: RunConfig):
     ort_session = onnxruntime.InferenceSession(args.model_path) if args.enable_predict else None
     
     video_clip = VideoFileClip(str(args.video_path), audio=False)
+    box = size_to_bbox(
+        video_clip.size[0], video_clip.size[1],
+        args.left, args.top, args.width, args.width
+    )
+    video_clip = crop(
+        video_clip, 
+        x1=box.x, y1=box.y, width=box.w, height=box.h
+    )
+
     print(f'video duration: {video_clip.duration}s, fps: {video_clip.fps}')
 
     if args.dst is not None:
@@ -283,12 +295,14 @@ def main(args: RunConfig):
 
     time_list = np.linspace(0, video_clip.duration, int(video_clip.duration * video_clip.fps / args.skip))
     time_list = [
-        i for i in time_list if (i > 30 and i < 90) 
+        i for i in time_list if (i > 0 and i < 90) 
     ]
+    if not DEBUG:
+        time_list = tqdm(time_list)
     for t in (time_list):
         frame = video_clip.get_frame(t)
-        img = crop_image(frame, args.left, args.top, args.width)
-
+        # img = crop_image(frame, args.left, args.top, args.width)
+        img = frame
         img = cv2.resize(img, (224, 224))[..., :3]
         img_in = (img.transpose((2, 0, 1)) / 255.0).astype(np.float32).reshape(
             1, 3, 224, 224
@@ -308,11 +322,14 @@ def main(args: RunConfig):
 
 
 if __name__ == "__main__":
-    res = tyro.cli(RunConfig)
-    # res = RunConfig(
-    #     video_path=Path('./data/2024-07-25-21-36-48.mp4'),
-    #     export_to='beep',
-    #     skip=1,
-    #     model_path=Path('./runs/resnet18.onnx'),
-    # )
+    if 'get_ipython' in locals():
+        res = RunConfig(
+            video_path=Path(r'./data/2024-07-28-23-09-59.mp4'),
+            export_to='beep',
+            skip=1,
+            model_path=Path('./runs/resnet18.onnx'),
+        )
+        DEBUG = True
+    else:
+        res = tyro.cli(RunConfig)
     main(res)
