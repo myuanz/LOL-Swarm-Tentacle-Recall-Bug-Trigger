@@ -14,7 +14,7 @@ class ImageLabelingApp(QMainWindow):
         self.setWindowTitle("Image Labeling App")
         self.setGeometry(100, 100, 800, 600)
 
-        self.image_folder = Path("./data/2024-07-25-21-36-48")
+        self.image_folder = Path("./data/2024-07-28-23-09-59")
         self.labels_file = self.image_folder / "labels.json"
         self.preds_file = self.image_folder / "preds.npy"
         if self.preds_file.exists():
