@@ -17,7 +17,7 @@ from serde.json import to_json
 from tqdm import tqdm
 from moviepy.video.fx.crop import crop
 
-from image_utils import crop_image, BBox, size_to_bbox
+from image_utils import crop_image, BBox, size_to_bbox, Pair
 
 DEBUG = False
 
@@ -149,7 +149,7 @@ class BeepExportor(Exportor):
         if DEBUG:
             print(curr_pred, self.pred_beep_time, self.all_period[-2:])
         
-        if curr_pred.label == self.last_event.label:
+        if curr_pred.label == self.last_event.label and self.all_period[-1].begin.label == curr_pred.label:
             self.all_period[-1].end = curr_pred
         else:
             thr = {
@@ -185,10 +185,27 @@ class BeepExportor(Exportor):
         self.i += 1
         self.last_event = curr_pred
 
-    def calc_beep_time(self) -> float:
-        assert len(self.label_index[ACT_EVENT]) >= 2
-        first_act = self.seek(ACT_EVENT, -2)
-        second_act = self.seek(ACT_EVENT, -1)
+    def find_last_two_period_with_threshold(self, label: int, length_thr: float) -> Pair[PredPeriod] | None:
+        if self.count(label) < 2:
+            return None
+        periods: list[PredPeriod] = []
+        for i in range(-1, -len(self.label_index[label])-1, -1):
+            if len(periods) == 2:
+                break
+            period = self.seek(label, i)
+            if period.period > length_thr:
+                periods.append(period)
+        if len(periods) < 2:
+            return None
+        return Pair(periods[0], periods[1])
+
+    def calc_beep_time(self) -> float | None:        
+        last_periods = self.find_last_two_period_with_threshold(ACT_EVENT, length_thr=1/30)
+        # print(f'{last_periods=}')
+        if last_periods is None:
+            return None
+        else:
+            second_act, first_act = last_periods.first, last_periods.second
 
         duration = second_act.begin_time - first_act.begin_time
         leave_idxs = list(range(first_act.idx, second_act.idx))
@@ -295,7 +312,7 @@ def main(args: RunConfig):
 
     time_list = np.linspace(0, video_clip.duration, int(video_clip.duration * video_clip.fps / args.skip))
     time_list = [
-        i for i in time_list if (i > 0 and i < 90) 
+        i for i in time_list if (i > 30 and i < 90) 
     ]
     if not DEBUG:
         time_list = tqdm(time_list)
@@ -333,3 +350,5 @@ if __name__ == "__main__":
     else:
         res = tyro.cli(RunConfig)
     main(res)
+
+# %%
