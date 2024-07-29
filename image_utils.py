@@ -42,3 +42,18 @@ def crop_image[T: (int, float)](
         return res.copy()
     return res
 
+@dataclass
+class Pair[T]:
+    first: T
+    second: T
+    
+    @property
+    def last(self) -> T:
+        return self.second
+    
+    def __iter__(self):
+        return iter((self.first, self.second))
+    
+    def __getitem__(self, idx: int) -> T:
+        return (self.first, self.second)[idx]
+    
