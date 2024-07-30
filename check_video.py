@@ -4,7 +4,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Self
+from typing import Callable, Literal, Self
+from threading import Thread
+import winsound
 
 import cv2
 import numpy as np
@@ -124,7 +126,7 @@ ACT_EVENT   : int = 1
 CARD_EVENT  : int = 2
 OTHER_EVENT : int = 3
 class BeepExportor(Exportor):
-    def __init__(self):
+    def __init__(self, on_beep_act: Callable[[PredWithTime], None]|None=None):
         self.preds: list[PredWithTime] = []
         self.label_index: dict[int, list[int]] = {
             ACT_EVENT: [], NORMAL_EVENT: [], 
@@ -134,6 +136,7 @@ class BeepExportor(Exportor):
         self.last_event = PredWithTime(np.zeros(4), -1, 0)
         self.pred_beep_time = 0
         self.i = 0
+        self.on_beep_act = on_beep_act
         
     def seek(self, label: int, i: int=-1) -> PredPeriod:
         idx = self.label_index[label][i]
@@ -144,7 +147,7 @@ class BeepExportor(Exportor):
 
     def add_frame(self, frame: np.ndarray, t: float) -> None:
         pass
-    def add_pred(self, pred: np.ndarray, t: float) -> None:
+    def add_pred(self, pred: np.ndarray, t: float) -> PredWithTime:
         curr_pred = PredWithTime.from_pred(pred, t=t)
         if DEBUG:
             print(curr_pred, self.pred_beep_time, self.all_period[-2:])
@@ -169,21 +172,19 @@ class BeepExportor(Exportor):
                     begin=curr_pred, end=curr_pred,
                     idx=len(self.all_period),
                 ))
-
-        if curr_pred.label != ACT_EVENT and self.label_index[ACT_EVENT].__len__() >= 2:
+                
+                if self.on_beep_act and curr_pred.label == ACT_EVENT:
+                    self.on_beep_act(curr_pred)
+                    
+        if curr_pred.label not in {ACT_EVENT, CARD_EVENT} and self.label_index[ACT_EVENT].__len__() >= 2:
             # 当前不是 ACT_EVENT, 但 ACT_EVENT 有两个以上, 可以用来计算下次 act 在何时
             self.pred_beep_time = self.calc_beep_time()
             # print(f'new {self.pred_beep_time=}')
-
-        # if self.pred_beep_time > 0 and self.pred_beep_time - curr_pred.time < 0.5:
-        #     # 距离预测的act时间小于0.5s, 则发出提示音
-        #     print(f'将在 {self.pred_beep_time} 捶地')
-            # import winsound
-            # winsound.Beep(1000, int((curr_pred_beep_time - curr_pred.time) * 1000))
         
         self.preds.append(curr_pred)
         self.i += 1
         self.last_event = curr_pred
+        return curr_pred
 
     def find_last_two_period_with_threshold(self, label: int, length_thr: float) -> Pair[PredPeriod] | None:
         if self.count(label) < 2:
@@ -306,13 +307,16 @@ def main(args: RunConfig):
         case 'image':
             exportor: Exportor = ImageExportor(export_path)
         case 'beep':
-            exportor: Exportor = BeepExportor()
+            if DEBUG:
+                exportor: Exportor = BeepExportor(on_beep_act=lambda x: print(f'beep: {x.time:.2f}s'))
+            else:
+                exportor: Exportor = BeepExportor()
         case _:
             raise ValueError(f'unknown export_to: {args.export_to}')
 
     time_list = np.linspace(0, video_clip.duration, int(video_clip.duration * video_clip.fps / args.skip))
     time_list = [
-        i for i in time_list if (i > 30 and i < 90) 
+        i for i in time_list if (i > 96 and i < 150) 
     ]
     if not DEBUG:
         time_list = tqdm(time_list)
@@ -341,7 +345,7 @@ def main(args: RunConfig):
 if __name__ == "__main__":
     if 'get_ipython' in locals():
         res = RunConfig(
-            video_path=Path(r'./data/2024-07-28-23-09-59.mp4'),
+            video_path=Path(r'./data/2024-07-23-20-49-52.mp4'),
             export_to='beep',
             skip=1,
             model_path=Path('./runs/resnet18.onnx'),
